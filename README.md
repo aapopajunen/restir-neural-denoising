@@ -17,6 +17,10 @@ repository is a modified fork of the
 
 ## Model
 
+![Architecture of the recurrent denoiser](docs/architecture.svg)
+
+*Architecture overview (Figure 8 in the thesis).*
+
 [`RecurrentDenoiser`](training/networks_edm2.py) is a recurrent denoiser built
 on EDM2's magnitude-preserving U-Net. It carries a learned hidden state from
 frame to frame: each frame the previous state is reprojected into the current
@@ -135,6 +139,7 @@ select_best.py           pick checkpoints from validation results
 denoise.py               run a snapshot over test sequences
 compute_metrics.py       image metrics for denoised sequences
 configs/                 thesis training configuration(s)
+docs/                    architecture diagram
 training/networks_edm2.py  U-Net and the recurrent denoiser
 training/loss.py         recurrent L1 loss
 training/dataset.py      HDF5 sequence dataset
