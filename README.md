@@ -52,7 +52,11 @@ from the launch script used for the thesis runs. The configurations of the
 other three models will be added once they have been verified against the
 original training runs.
 
-The recurrent thesis results use the EMA snapshots with `std = 0.001` (files ending in `-0.001.pkl`).
+The thesis models were trained for about 5 × 10<sup>7</sup> frames (roughly
+30 hours on one NVIDIA H200). The `duration` in the config is an upper limit
+inherited from the EDM2 preset, not the length of the thesis runs.
+
+All thesis results use the EMA snapshots with `std = 0.001` (files ending in `-0.001.pkl`).
 
 ## Data
 
