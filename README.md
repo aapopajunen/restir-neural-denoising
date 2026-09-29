@@ -56,9 +56,6 @@ The thesis models were trained for about 5 × 10<sup>7</sup> frames (roughly
 30 hours on one NVIDIA H200). The `duration` in the config is an upper limit
 inherited from the EDM2 preset, not the length of the thesis runs.
 
-The recurrent models evaluated in the thesis use the power-function EMA of the
-weights with effective standard deviation 0.001, tracked during training.
-
 ## Data
 
 Unfortunately, the trained model weights and the training data are not
