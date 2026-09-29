@@ -17,25 +17,13 @@ repository is a modified fork of the
 
 ## Model
 
-`RecurrentDenoiser` in [`training/networks_edm2.py`](training/networks_edm2.py). Each frame:
-
-1. The previous frame's 8-channel hidden state is reprojected into the current
-   frame by bilinear gathering along the motion vectors. Of the four taps,
-   those whose world-space position does not match the current pixel
-   (disocclusions) are dropped and the rest renormalized; with no valid tap
-   the history is zero.
-2. The input buffers are log-transformed and whitened with per-channel
-   statistics computed from the training data. They are concatenated with the
-   reprojected hidden state and passed through the U-Net.
-3. The U-Net outputs a new hidden state and a per-pixel blend weight `w`. The
-   hidden state is updated as `lerp(new, reprojected, w)`, so `w = 0` trusts
-   the current frame and `w = 1` reuses history.
-4. A 1×1 convolution maps the hidden state to log radiance, which is converted
-   back to linear radiance.
-
-Training uses truncated backpropagation through time over 128×128 crops of
-32-frame sequences. The loss (`RecurrentL1Loss`) is L1 on the output plus L1
-on the frame-to-frame temporal difference after reprojection.
+[`RecurrentDenoiser`](training/networks_edm2.py) is a recurrent denoiser built
+on EDM2's magnitude-preserving U-Net. It carries a learned hidden state from
+frame to frame: each frame the previous state is reprojected into the current
+view, the U-Net combines it with the current frame's inputs, and a predicted
+per-pixel blend weight decides how much history to keep. It is trained on
+32-frame sequences with an L1 loss on the output and on its frame-to-frame
+change. See the [thesis](https://urn.fi/URN:NBN:fi:aalto-202606175267) for details.
 
 The thesis compares two input configurations, each in a recurrent and a
 feed-forward variant:
