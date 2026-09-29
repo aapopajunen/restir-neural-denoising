@@ -49,20 +49,11 @@ original training runs.
 
 The recurrent thesis results use the EMA snapshots with `std = 0.001` (files ending in `-0.001.pkl`).
 
-## Requirements
-
-Linux with an NVIDIA GPU. The thesis models were trained on a single H200;
-training at the thesis batch size (128 sequences of 128×128 crops) needs a
-large GPU, but `--batch-gpu` enables gradient accumulation on smaller ones.
-
-```bash
-# Install PyTorch for your CUDA version (https://pytorch.org), then:
-pip install -r requirements.txt
-```
-
-Alternatively, use `environment.yml` (conda) or the `Dockerfile`.
-
 ## Data
+
+Unfortunately, the trained model weights and the training data are not
+currently available. This section documents the dataset format the code
+expects.
 
 Datasets are HDF5 files, one per scene and split. Each run's config names the
 files relative to a data root, which is given with `--data-root` or the
@@ -91,44 +82,6 @@ scenes), otherwise 1.0. All outputs of the model are in these normalized units.
 
 The datasets were rendered with a separate Falcor-based pipeline that is not
 part of this repository.
-
-## Usage
-
-**Train.** Creates `training-runs/<id>-<config name>/` with snapshots, TensorBoard logs and training-state checkpoints.
-
-```bash
-python train.py --config configs/thesis_restir.json --data-root /path/to/datasets
-
-# Several GPUs
-torchrun --standalone --nproc_per_node=4 train.py --config configs/thesis_restir.json --data-root /path/to/datasets
-
-# Continue from the latest checkpoint
-python train.py --resume training-runs/00000-thesis_restir --data-root /path/to/datasets
-```
-
-Under Slurm, training saves a checkpoint and exits five minutes before the job's time limit.
-
-**Validate.** Computes the training loss on the validation scenes for every snapshot and appends the results to `metrics/validation_loss.jsonl`. It can be re-run while training progresses; already-evaluated snapshots are skipped.
-
-```bash
-python validate.py training-runs/00000-thesis_restir --data-root /path/to/datasets --ema-label ema-0.001
-python select_best.py --ema-label ema-0.001
-```
-
-**Denoise the test scenes.** Runs a snapshot over the full-resolution test sequences.
-
-```bash
-python denoise.py training-runs/00000-thesis_restir \
-    --snapshot network-snapshot-0033554-0.001.pkl --data-root /path/to/datasets
-```
-
-Each sequence is saved as a `.pt` file (see [`sequence.py`](sequence.py)) holding the denoised output, the reference and the blend weight map per frame.
-
-**Metrics.** PSNR, SSIM and FLIP on Reinhard tone-mapped images (exposure 20), and MAPE on linear radiance.
-
-```bash
-python compute_metrics.py training-runs/00000-thesis_restir/test/network-snapshot-0033554-0.001
-```
 
 ## Repository layout
 
