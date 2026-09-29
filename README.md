@@ -1,0 +1,188 @@
+# Neural Denoising under Correlated Noise from ReSTIR Path Tracing
+
+Code for the master's thesis
+[*Neural Denoising under Correlated Noise from ReSTIR Path Tracing*](https://urn.fi/URN:NBN:fi:aalto-202606175267)
+(Aapo Pajunen, Aalto University, 2026).
+
+ReSTIR reuses path samples across neighbouring pixels and frames, which makes
+its output far less noisy than plain path tracing but leaves correlated noise
+that a denoiser struggles to tell apart from scene detail. The thesis studies
+whether giving a neural denoiser the raw 1-sample-per-pixel path-traced
+estimates that seed ReSTIR's resampling, whose noise is uncorrelated, reduces
+these correlation artefacts. The denoiser is a recurrent network built on the
+magnitude-preserving U-Net of EDM2
+([Karras et al., CVPR 2024](https://arxiv.org/abs/2312.02696)), and this
+repository is a modified fork of the
+[official EDM2 implementation](https://github.com/NVlabs/edm2).
+
+## Model
+
+`RecurrentDenoiser` in [`training/networks_edm2.py`](training/networks_edm2.py). Each frame:
+
+1. The previous frame's 8-channel hidden state is reprojected into the current
+   frame by bilinear gathering along the motion vectors. Of the four taps,
+   those whose world-space position does not match the current pixel
+   (disocclusions) are dropped and the rest renormalized; with no valid tap
+   the history is zero.
+2. The input buffers are log-transformed and whitened with per-channel
+   statistics computed from the training data. They are concatenated with the
+   reprojected hidden state and passed through the U-Net.
+3. The U-Net outputs a new hidden state and a per-pixel blend weight `w`. The
+   hidden state is updated as `lerp(new, reprojected, w)`, so `w = 0` trusts
+   the current frame and `w = 1` reuses history.
+4. A 1×1 convolution maps the hidden state to log radiance, which is converted
+   back to linear radiance.
+
+Training uses truncated backpropagation through time over 128×128 crops of
+32-frame sequences. The loss (`RecurrentL1Loss`) is L1 on the output plus L1
+on the frame-to-frame temporal difference after reprojection.
+
+The thesis compares two input configurations, each in a recurrent and a
+feed-forward variant:
+
+| Inputs | Thesis name |
+|---|---|
+| depth, diffuse albedo, normal, ReSTIR (correlated) | Baseline |
+| the above + the 1 spp path-traced initial candidates (`restir_uncorrelated`) | Ours |
+
+The feed-forward variant is the same network trained with `"use_history": false`:
+the hidden state is not carried between frames, so every frame starts from an
+empty history.
+
+Currently only the recurrent Baseline configuration is included
+([`configs/thesis_restir.json`](configs/thesis_restir.json)), with values taken
+from the launch script used for the thesis runs. The configurations of the
+other three models will be added once they have been verified against the
+original training runs.
+
+The recurrent thesis results use the EMA snapshots with `std = 0.001` (files ending in `-0.001.pkl`).
+
+## Requirements
+
+Linux with an NVIDIA GPU. The thesis models were trained on a single H200;
+training at the thesis batch size (128 sequences of 128×128 crops) needs a
+large GPU, but `--batch-gpu` enables gradient accumulation on smaller ones.
+
+```bash
+# Install PyTorch for your CUDA version (https://pytorch.org), then:
+pip install -r requirements.txt
+```
+
+Alternatively, use `environment.yml` (conda) or the `Dockerfile`.
+
+## Data
+
+Datasets are HDF5 files, one per scene and split. Each run's config names the
+files relative to a data root, which is given with `--data-root` or the
+`DENOISE_DATA_ROOT` environment variable.
+
+A `dataset.hdf5` contains:
+
+| Entry | Contents |
+|---|---|
+| `buffers` | float16 `[sequences, frames, channels, H, W]`, all per-pixel buffers stacked along the channel axis |
+| `cameras` | structured array `[sequences, frames]` with fields `position`, `target`, `up`, `focalLength`, `aspectRatio`, `nearPlane`, `farPlane` |
+| `crop_sequences` | `[crop sizes, sequences, frames]` of `(top, left)`; needed for training and validation (crop 128) |
+| `attrs['buffer_mapping']` | Python-literal dict `{buffer name: [channel indices]}` |
+| `attrs['crop_sizes']` | Python-literal list of crop sizes in `crop_sequences` |
+| `attrs['mean_radiance']` | optional, see below |
+
+Buffers used by the model: `depth`, `diffuse`, `normal`, `restir_correlated`,
+`restir_uncorrelated`, `target` (reference), `motion_vector` (in UV units) and
+`world_space` (world-space position).
+
+Radiance buffers are divided by a per-scene mean radiance so scenes share a
+common exposure. The value is taken from the file's `mean_radiance` attribute
+if present, otherwise from `SCENE_MEAN_RADIANCE` in
+[`training/dataset.py`](training/dataset.py) (the values used for the thesis
+scenes), otherwise 1.0. All outputs of the model are in these normalized units.
+
+The datasets were rendered with a separate Falcor-based pipeline that is not
+part of this repository.
+
+## Usage
+
+**Train.** Creates `training-runs/<id>-<config name>/` with snapshots, TensorBoard logs and training-state checkpoints.
+
+```bash
+python train.py --config configs/thesis_restir.json --data-root /path/to/datasets
+
+# Several GPUs
+torchrun --standalone --nproc_per_node=4 train.py --config configs/thesis_restir.json --data-root /path/to/datasets
+
+# Continue from the latest checkpoint
+python train.py --resume training-runs/00000-thesis_restir --data-root /path/to/datasets
+```
+
+Under Slurm, training saves a checkpoint and exits five minutes before the job's time limit.
+
+**Validate.** Computes the training loss on the validation scenes for every snapshot and appends the results to `metrics/validation_loss.jsonl`. It can be re-run while training progresses; already-evaluated snapshots are skipped.
+
+```bash
+python validate.py training-runs/00000-thesis_restir --data-root /path/to/datasets --ema-label ema-0.001
+python select_best.py --ema-label ema-0.001
+```
+
+**Denoise the test scenes.** Runs a snapshot over the full-resolution test sequences.
+
+```bash
+python denoise.py training-runs/00000-thesis_restir \
+    --snapshot network-snapshot-0033554-0.001.pkl --data-root /path/to/datasets
+```
+
+Each sequence is saved as a `.pt` file (see [`sequence.py`](sequence.py)) holding the denoised output, the reference and the blend weight map per frame.
+
+**Metrics.** PSNR, SSIM and FLIP on Reinhard tone-mapped images (exposure 20), and MAPE on linear radiance.
+
+```bash
+python compute_metrics.py training-runs/00000-thesis_restir/test/network-snapshot-0033554-0.001
+```
+
+## Repository layout
+
+```
+train.py                 training entry point
+validate.py              validation loss for all snapshots of a run
+select_best.py           pick checkpoints from validation results
+denoise.py               run a snapshot over test sequences
+compute_metrics.py       image metrics for denoised sequences
+configs/                 thesis training configuration(s)
+training/networks_edm2.py  U-Net and the recurrent denoiser
+training/loss.py         recurrent L1 loss
+training/dataset.py      HDF5 sequence dataset
+training/augmentation.py brightness, channel shuffle and flip augmentations
+training/training_loop.py  training loop with truncated BPTT
+training/phema.py        power-function EMA (from EDM2)
+torch_utils/, dnnlib/    utilities (from EDM2, extended)
+```
+
+## License
+
+This work is a derivative of EDM2 and is distributed under the same
+[Creative Commons BY-NC-SA 4.0](LICENSE.txt) license: non-commercial use
+only, and derivatives must be shared under the same terms. Files carrying the
+NVIDIA copyright header originate from EDM2 and have been modified.
+
+Copyright (c) 2024, NVIDIA CORPORATION & AFFILIATES. Modifications (c) 2025–2026 Aapo Pajunen.
+
+## Citation
+
+If you use this code, please cite the thesis and EDM2:
+
+```bibtex
+@mastersthesis{Pajunen2026denoising,
+  title  = {Neural Denoising under Correlated Noise from {ReSTIR} Path Tracing},
+  author = {Aapo Pajunen},
+  school = {Aalto University, School of Science},
+  year   = {2026},
+  url    = {https://urn.fi/URN:NBN:fi:aalto-202606175267},
+}
+
+@inproceedings{Karras2024edm2,
+  title     = {Analyzing and Improving the Training Dynamics of Diffusion Models},
+  author    = {Tero Karras and Miika Aittala and Jaakko Lehtinen and
+               Janne Hellsten and Timo Aila and Samuli Laine},
+  booktitle = {Proc. CVPR},
+  year      = {2024},
+}
+```

@@ -1,0 +1,17 @@
+# conda env create -f environment.yml
+name: edm2-denoising
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu121
+    - torch==2.3.1
+    - numpy==1.26.4
+    - h5py
+    - psutil
+    - requests
+    - tensorboard
+    - torchmetrics
+    - flip-evaluator

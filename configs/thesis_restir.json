@@ -1,0 +1,59 @@
+{
+    "description": "Baseline (ReSTIR input only), recurrent. Values taken from the cluster launch script used for the run-88 thesis runs.",
+
+    "network": "training.networks_edm2.RecurrentDenoiser",
+    "channels": 48,
+    "dropout": 0.0,
+    "dtype": "torch.float16",
+    "use_gradscaler": true,
+    "input_buffers": ["depth", "diffuse", "normal", "restir_correlated"],
+    "buffer_transforms": {
+        "depth":               "buffer_transform.depth_transform",
+        "restir_correlated":   "buffer_transform.signed_log1p_transform",
+        "restir_uncorrelated": "buffer_transform.signed_log1p_transform",
+        "target":              "buffer_transform.signed_log1p_transform"
+    },
+    "loss": "training.loss.RecurrentL1Loss",
+
+    "train_data": [
+        "130-veach-ajar-sequences/dataset.hdf5",
+        "135-bistro-exterior-sequences/dataset.hdf5",
+        "137-bistro-interior-sequences/dataset.hdf5",
+        "143-emerald-square-sequences/dataset.hdf5",
+        "164-zero-day-sequences/dataset.hdf5"
+    ],
+    "val_data": [
+        "170-bistro-exterior-validation/dataset.hdf5",
+        "171-bistro-interior-validation/dataset.hdf5",
+        "172-emerald-square-day-validation/dataset.hdf5",
+        "174-zero-day-validation/dataset.hdf5",
+        "173-veach-ajar-validation/dataset.hdf5"
+    ],
+    "test_data": [
+        "165-bistro-exterior-test/dataset.hdf5",
+        "166-bistro-interior-test/dataset.hdf5",
+        "167-emerald-square-day-test/dataset.hdf5",
+        "175-zero-day-test/dataset.hdf5",
+        "169-veach-ajar-test/dataset.hdf5"
+    ],
+    "train_seqlen": 32,
+    "train_crop_size": 128,
+    "fixed_crop": true,
+
+    "batch": 128,
+    "batch_gpu": 128,
+    "tbptt_step": 4,
+    "tbptt_window": 4,
+    "use_history": true,
+    "lr": 0.008,
+    "decay": 35000,
+    "rampup": 0.0,
+    "loss_scaling": 1.0,
+    "ema_stds": [0.001, 0.01, 0.025, 0.050],
+
+    "duration": 1073741824,
+    "status": 32768,
+    "snapshot": 1048576,
+    "checkpoint": 134217728,
+    "seed": 0
+}
