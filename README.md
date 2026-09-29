@@ -15,6 +15,11 @@ magnitude-preserving U-Net of EDM2
 repository is a modified fork of the
 [official EDM2 implementation](https://github.com/NVlabs/edm2).
 
+This is a cleaned-up version of the code used for the thesis experiments:
+experimental model variants and cluster-specific tooling have been removed,
+and the scripts have been reorganized. The results in the thesis were
+produced with the original code; this version has not been re-run.
+
 ## Model
 
 ![Architecture of the recurrent denoiser](docs/architecture.svg)
